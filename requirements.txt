@@ -1,0 +1,27 @@
+# ============================================================
+# requirements.txt
+# LLM-Assisted Big Data Integration – Python dependencies
+# ============================================================
+
+# Core data manipulation
+pandas>=2.0.0
+numpy>=1.26.0
+
+# String similarity (Jaro-Winkler, Levenshtein)
+jellyfish>=1.0.0
+
+# Graph-based clustering (Connected Components)
+networkx>=3.2.0
+
+# HTTP client for Ollama REST API
+requests>=2.31.0
+
+# (Optional) Structured LLM output with Pydantic validation
+pydantic>=2.5.0
+# instructor>=1.0.0  # Uncomment if using Instructor library instead of raw JSON mode
+
+# (Optional) Alternative cache backend
+# diskcache>=5.6.0  # Uncomment if preferring DiskCache over SQLite
+
+# Development / testing
+pytest>=7.4.0

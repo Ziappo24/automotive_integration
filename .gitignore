@@ -1,0 +1,29 @@
+# ─── Large data files ───────────────────────────────────────────────────────
+data/
+
+# ─── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ─── Virtual environment ─────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ─── Cache / generated output ────────────────────────────────────────────────
+cache/
+logs/
+output/
+
+# ─── Secrets / environment variables ─────────────────────────────────────────
+.env
+*.env
+
+# ─── OS & editor artifacts ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

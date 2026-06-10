@@ -1,0 +1,26 @@
+{
+  "craigslist": {
+    "manufacturer": "make",
+    "model": "model",
+    "year": "year",
+    "price": "price",
+    "odometer": "mileage",
+    "fuel": "fuel_type"
+  },
+  "usedcars": {
+    "make_name": "make",
+    "model_name": "model",
+    "year": "year",
+    "price": "price",
+    "mileage": "mileage",
+    "fuel_type": "fuel_type"
+  },
+  "ebay": {
+    "brand": "make",
+    "model": "model",
+    "yearOfRegistration": "year",
+    "price": "price",
+    "kilometer": "mileage",
+    "fuelType": "fuel_type"
+  }
+}
