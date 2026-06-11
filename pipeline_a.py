@@ -15,7 +15,7 @@ All decisions are fully deterministic; no ML or LLM calls are made here.
 import logging
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import networkx as nx
 import numpy as np
@@ -293,17 +293,90 @@ def link_records(
 # Phase 4 – Data Fusion
 # ===========================================================================
 
+# Attributes whose values are continuous numbers → use median fusion
+_NUMERIC_ATTRS: Set[str] = {"price", "mileage", "year"}
+
+# Per-attribute source trust weights.
+# These override the global SOURCE_PRIORITY for specific attributes where
+# certain sources are known to be noisier (e.g. Craigslist has noisy fuel_type,
+# eBay may have listing-price inflation).
+# Higher weight = more trusted for this attribute.
+_ATTR_SOURCE_WEIGHTS: Dict[str, Dict[str, float]] = {
+    "fuel_type": {
+        # Craigslist & eBay use canonical fuel labels; usedcars has fuel_type conflicts
+        "craigslist": 2.0,
+        "ebay": 2.0,
+        "usedcars": 1.0,
+    },
+    "price": {
+        "usedcars": 2.0,   # structured marketplace, more reliable prices
+        "craigslist": 1.0,
+        "ebay": 1.5,
+    },
+    "mileage": {
+        "usedcars": 2.0,
+        "craigslist": 1.0,
+        "ebay": 1.5,
+    },
+    # For make/model/year: use global SOURCE_PRIORITY (default weight = 1.0)
+}
+
+
+def _weighted_majority(
+    values_with_sources: List[Tuple[Any, str]],
+    attr: str,
+) -> Any:
+    """
+    Weighted majority vote for a categorical attribute.
+
+    Each vote is weighted by _ATTR_SOURCE_WEIGHTS[attr][source] when available,
+    otherwise falls back to a weight derived from SOURCE_PRIORITY.
+
+    Parameters
+    ----------
+    values_with_sources : list of (value, source_name)
+    attr : str  – the mediated attribute name
+
+    Returns
+    -------
+    The value with the highest weighted vote count.
+    """
+    attr_weights = _ATTR_SOURCE_WEIGHTS.get(attr, {})
+    tally: Dict[Any, float] = defaultdict(float)
+
+    for val, src in values_with_sources:
+        # Attribute-specific weight; fall back to inverse of global priority (higher prio → higher weight)
+        w = attr_weights.get(
+            src,
+            1.0 / SOURCE_PRIORITY.get(src, 10),  # prio 1 → weight 1.0, prio 3 → weight 0.33
+        )
+        tally[val] += w
+
+    # Return the value with the highest accumulated weight
+    return max(tally, key=lambda v: (tally[v], -SOURCE_PRIORITY.get(
+        next((s for _, s in values_with_sources if _ == v), ""), 999
+    )))
+
+
 def fuse_cluster(
     cluster: Set[str],
     indexed_df: pd.DataFrame,
 ) -> Dict[str, object]:
     """
-    Resolve an entity cluster to a single fused record using Majority Voting.
+    Resolve an entity cluster to a single fused record.
 
-    For each mediated attribute:
-      1. Collect all non-null values from records in the cluster.
-      2. Pick the most frequent value (majority vote).
-      3. On a tie, prefer the value from the highest-priority source.
+    Strategy (improved over plain Majority Voting):
+
+    Categorical attributes (make, model, fuel_type):
+      - Weighted majority vote using per-attribute source trust weights
+        (_ATTR_SOURCE_WEIGHTS). A source that is known to introduce noise
+        for a specific attribute gets a lower weight, so the consensus of
+        the other sources can override it.
+
+    Numeric attributes (price, mileage, year):
+      - Median of all available values across sources.
+      - Median is robust to single-source outliers and deliberate noise
+        (e.g. inflated listing prices on one platform).
 
     Parameters
     ----------
@@ -328,26 +401,18 @@ def fuse_cluster(
             fused[attr] = None
             continue
 
-        # Count occurrences
-        counts = values.value_counts()
-        max_count = counts.iloc[0]
-        candidates = counts[counts == max_count].index.tolist()
-
-        if len(candidates) == 1:
-            fused[attr] = candidates[0]
+        if attr in _NUMERIC_ATTRS:
+            # --- Numeric: median fusion ---
+            try:
+                numeric_vals = pd.to_numeric(values, errors="coerce").dropna()
+                fused[attr] = numeric_vals.median() if not numeric_vals.empty else values.iloc[0]
+            except Exception:
+                fused[attr] = values.iloc[0]
         else:
-            # Tiebreak by source priority
-            source_map = records["source"].to_dict()
-            best_val = candidates[0]
-            best_priority = 999
-            for rid, row in records.iterrows():
-                val = row.get(attr)
-                if val in candidates:
-                    priority = SOURCE_PRIORITY.get(row["source"], 999)
-                    if priority < best_priority:
-                        best_priority = priority
-                        best_val = val
-            fused[attr] = best_val
+            # --- Categorical: weighted majority vote ---
+            source_col = records.loc[values.index, "source"]
+            pairs = list(zip(values.tolist(), source_col.tolist()))
+            fused[attr] = _weighted_majority(pairs, attr)
 
     fused["entity_source_count"] = len(records["source"].unique())
     fused["entity_record_count"] = len(cluster)

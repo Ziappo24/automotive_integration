@@ -76,40 +76,44 @@ def get_stats() -> Dict[str, int]:
 
 _SCHEMA_SYSTEM_PROMPT = """You are a data engineering assistant.
 Your task is to map source database column names to a canonical mediated schema.
+The mediated schema has exactly these attributes:
+  make, model, year, price, mileage, fuel_type
 
-The mediated schema has EXACTLY these six attributes (no others exist):
-  - make       (vehicle brand / manufacturer, e.g. Toyota, Ford, BMW)
-  - model      (vehicle model name, e.g. Camry, Mustang, 3 Series)
-  - year       (model year, a 4-digit integer, e.g. 2018)
-  - price      (asking / listing price in currency units)
-  - mileage    (odometer reading in miles or kilometres)
-  - fuel_type  (fuel category, e.g. gas, diesel, electric)
+Rules:
+  - Return ONLY a valid JSON object. No preamble, no markdown fences.
+  - Keys are ONLY the source column names that match a mediated attribute.
+  - Values are the matched mediated attribute name (make, model, year, price, mileage, or fuel_type).
+  - Unmapped columns should be omitted from the JSON.
+  - The only valid output values are exactly: make, model, year, price, mileage, fuel_type, or null. Any other string is forbidden
 
-CRITICAL RULES – violating any rule makes the output unusable:
-  1. Return ONLY a raw JSON object. No markdown fences, no preamble, no explanation.
-  2. Each KEY must be an exact source column name from the list you are given.
-  3. Each VALUE must be one of the six mediated attributes above – EXACTLY as spelled:
-         "make", "model", "year", "price", "mileage", "fuel_type"
-     Any other value (e.g. "manufacturer", "brand", "odometer", "km") is FORBIDDEN.
-  4. Only include a column if it clearly maps to one of the six attributes.
-     Omit columns that do not map; do NOT include them with null or wrong values.
-
-Common aliases you MUST recognise:
-  - make      ← manufacturer, brand, make_name, franchise_make, marque
-  - model     ← model_name, vehicle_model
-  - year      ← yearOfRegistration, year_of_registration, model_year, vehicle_year
-  - price     ← listing_price, asking_price, sale_price
-  - mileage   ← odometer, kilometer, km, miles, vehicle_mileage
-  - fuel_type ← fuel, fuelType, fuel_type_display, fueltype
 
 Example output:
 {
   "manufacturer": "make",
-  "model_name": "model",
   "odometer": "mileage",
-  "price": "price",
-  "yearOfRegistration": "year"
-}"""
+  "price": "price" 
+}
+
+## USER PROMPT TEMPLATE
+Source: {source_name}
+Columns: {source_columns_json}
+Sample rows (up to 3):
+{sample_rows_json}
+
+Map each column to the mediated schema. Return strict JSON.
+
+## EXPECTED OUTPUT FORMAT
+{
+  "<source_col_1>": "<mediated_attr | null>",
+  "<source_col_2>": "<mediated_attr | null>",
+  ...
+}
+
+## FAILURE POLICY
+If the response is not valid JSON, contains keys not in source columns,
+or maps to attributes not in the mediated schema, the fallback
+deterministic mapping from pipeline_a.py is used instead.
+"""
 
 
 def align_schema_llm(
